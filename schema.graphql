@@ -15,4 +15,14 @@ type UserReward @entity {
   totalReward: BigInt!
   lastUpdateBlock: Int!
   lastUpdateTimestamp: BigInt!
+  rewardHistory: [RewardHistory!]! @derivedFrom(field: "userReward")
+}
+
+type RewardHistory @entity {
+  id: ID!
+  userReward: UserReward!
+  amount: BigInt!
+  block: Int!
+  timestamp: BigInt!
+  transfer: Transfer! @index
 }

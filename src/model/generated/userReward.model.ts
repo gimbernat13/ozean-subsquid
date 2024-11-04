@@ -1,4 +1,5 @@
-import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, StringColumn as StringColumn_, Index as Index_, BigIntColumn as BigIntColumn_, IntColumn as IntColumn_} from "@subsquid/typeorm-store"
+import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, StringColumn as StringColumn_, Index as Index_, BigIntColumn as BigIntColumn_, IntColumn as IntColumn_, OneToMany as OneToMany_} from "@subsquid/typeorm-store"
+import {RewardHistory} from "./rewardHistory.model"
 
 @Entity_()
 export class UserReward {
@@ -21,4 +22,7 @@ export class UserReward {
 
     @BigIntColumn_({nullable: false})
     lastUpdateTimestamp!: bigint
+
+    @OneToMany_(() => RewardHistory, e => e.userReward)
+    rewardHistory!: RewardHistory[]
 }

@@ -1,19 +1,19 @@
 import {TypeormDatabase} from '@subsquid/typeorm-store'
-import {Transfer, UserReward} from './model'
+import {Transfer, UserReward, RewardHistory} from './model'
 import {processor} from './processor'
 import {events} from './abi/cpool'
-import { In } from 'typeorm'
+import {In} from 'typeorm'
 
 processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx) => {
     const transfers: Transfer[] = []
     const userRewardsMap = new Map<string, UserReward>()
+    const rewardHistories: RewardHistory[] = []
     
     // Load existing user rewards
     const users = new Set<string>()
     for (let block of ctx.blocks) {
         for (let log of block.logs) {
-            const { from, to, amount } = events.Transfer.decode(log)
-            users.add(from)
+            const { from, to } = events.Transfer.decode(log)
             users.add(to)
         }
     }
@@ -31,30 +31,43 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx) => {
             const { from, to, amount } = events.Transfer.decode(log)
             const reward = calculateReward(amount)
             
-            // Update user rewards
-            updateUserReward(userRewardsMap, to, reward, {
-                height: block.header.height,
-                timestamp: BigInt(block.header.timestamp)
+            // Create transfer entity
+            const transfer = new Transfer({
+                id: log.id,
+                block: block.header.height,
+                from,
+                to,
+                value: amount,
+                txHash: log.transactionHash,
+                reward
             })
+            transfers.push(transfer)
             
-            transfers.push(
-                new Transfer({
-                    id: log.id,
-                    block: block.header.height,
-                    from,
-                    to,
-                    value: amount,
-                    txHash: log.transactionHash,
-                    reward
-                })
+            // Update user rewards
+            const userReward = updateUserReward(
+                userRewardsMap, 
+                to, 
+                reward, 
+                block.header
             )
+            
+            // Create reward history entry
+            const rewardHistory = new RewardHistory({
+                id: `${log.id}-reward`,
+                userReward,
+                amount: reward,
+                block: block.header.height,
+                timestamp: BigInt(block.header.timestamp),
+                transfer
+            })
+            rewardHistories.push(rewardHistory)
         }
     }
 
-    // Save  updated user rewards
-    const updatedRewards = [...userRewardsMap.values()]
-    await ctx.store.save(updatedRewards)
+    // Save everything
+    await ctx.store.save([...userRewardsMap.values()])
     await ctx.store.insert(transfers)
+    await ctx.store.insert(rewardHistories)
 })
 
 function calculateReward(amount: bigint): bigint {
@@ -65,21 +78,24 @@ function updateUserReward(
     rewardsMap: Map<string, UserReward>, 
     user: string, 
     newReward: bigint,
-    block: {height: number, timestamp: bigint}
-): void {
+    block: {height: number, timestamp: number}
+): UserReward {
     let userReward = rewardsMap.get(user)
-
+    
     if (!userReward) {
         userReward = new UserReward({
             id: user,
             user: user,
             totalReward: 0n,
             lastUpdateBlock: block.height,
-            lastUpdateTimestamp: block.timestamp
+            lastUpdateTimestamp: BigInt(block.timestamp)
         })
     }
+    
     userReward.totalReward += newReward
     userReward.lastUpdateBlock = block.height
-    userReward.lastUpdateTimestamp = block.timestamp
+    userReward.lastUpdateTimestamp = BigInt(block.timestamp)
+    
     rewardsMap.set(user, userReward)
+    return userReward
 }
