@@ -1,25 +1,37 @@
 import {TypeormDatabase} from '@subsquid/typeorm-store'
 import {Transfer} from './model'
 import {processor} from './processor'
+import {events} from './abi/cpool'
 
 processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx) => {
     const transfers: Transfer[] = []
-    for (let c of ctx.blocks) {
-        for (let tx of c.transactions) {
-            // decode and normalize the tx data
+    
+    for (let block of ctx.blocks) {
+        for (let log of block.logs) {
+            // Decode the event data
+            const { from, to, amount } = events.Transfer.decode(log)
+            const reward = calculateReward(amount)  
             transfers.push(
                 new Transfer({
-                    id: tx.id,
-                    block: c.header.height,
-                    from: tx.from,
-                    to: tx.to,
-                    value: tx.value,
-                    txHash: tx.hash,
+                    id: log.id,
+                    block: block.header.height,
+                    from,
+                    to,
+                    value: amount,
+                    txHash: log.transactionHash,
+                    reward: reward 
                 })
             )
         }
     }
 
-    // upsert batches of entities with batch-optimized ctx.store.insert()/upsert()
+    const totalRewards = transfers.reduce((acc, t) => acc + t.reward, 0n)
+    ctx.log.info(`Total rewards in this batch: ${totalRewards}`)
+
     await ctx.store.insert(transfers)
 })
+
+// Custom reward calculation function
+function calculateReward(amount: bigint): bigint {
+    return amount * 5n / 100n // Example: 5% reward
+}

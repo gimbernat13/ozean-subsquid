@@ -25,4 +25,7 @@ export class Transfer {
 
     @StringColumn_({nullable: false})
     txHash!: string
+
+    @BigIntColumn_({nullable: false})
+    reward!: bigint
 }

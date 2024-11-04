@@ -5,4 +5,14 @@ type Transfer @entity {
   from: String! @index
   value: BigInt!
   txHash: String!
+  reward: BigInt!
+}
+
+
+type UserReward @entity {
+  id: ID!
+  user: String! @index
+  totalReward: BigInt!
+  lastUpdateBlock: Int!
+  lastUpdateTimestamp: BigInt!
 }
