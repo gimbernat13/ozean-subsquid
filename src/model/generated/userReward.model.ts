@@ -23,6 +23,12 @@ export class UserReward {
     @BigIntColumn_({nullable: false})
     lastUpdateTimestamp!: bigint
 
+    @IntColumn_({nullable: false})
+    transactionCount!: number
+
+    @StringColumn_({nullable: false})
+    currentTier!: string
+
     @OneToMany_(() => RewardHistory, e => e.userReward)
     rewardHistory!: RewardHistory[]
 }

@@ -15,6 +15,8 @@ type UserReward @entity {
   totalReward: BigInt!
   lastUpdateBlock: Int!
   lastUpdateTimestamp: BigInt!
+  transactionCount: Int!
+  currentTier: String!
   rewardHistory: [RewardHistory!]! @derivedFrom(field: "userReward")
 }
 
@@ -25,4 +27,6 @@ type RewardHistory @entity {
   block: Int!
   timestamp: BigInt!
   transfer: Transfer! @index
+  tierAtTime: String! @index
+  multiplier: Float!
 }

@@ -4,6 +4,41 @@ import {processor} from './processor'
 import {events} from './abi/cpool'
 import {In} from 'typeorm'
 
+// Define tier thresholds and multipliers
+const TIERS = {
+    BRONZE: {
+        threshold: 0,
+        multiplier: 1.0,
+        name: 'BRONZE'
+    },
+    SILVER: {
+        threshold: 50,
+        multiplier: 1.5,
+        name: 'SILVER'
+    },
+    GOLD: {
+        threshold: 100,
+        multiplier: 2.0,
+        name: 'GOLD'
+    },
+    PLATINUM: {
+        threshold: 200,
+        multiplier: 3.0,
+        name: 'PLATINUM'
+    }
+} as const
+
+function calculateTier(transactionCount: number) {
+    if (transactionCount >= TIERS.PLATINUM.threshold) return TIERS.PLATINUM
+    if (transactionCount >= TIERS.GOLD.threshold) return TIERS.GOLD
+    if (transactionCount >= TIERS.SILVER.threshold) return TIERS.SILVER
+    return TIERS.BRONZE
+}
+
+function calculateReward(amount: bigint, tier: typeof TIERS[keyof typeof TIERS]): bigint {
+    return amount * BigInt(Math.floor(tier.multiplier * 5)) / 100n // Base 5% reward * tier multiplier
+}
+
 processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx) => {
     const transfers: Transfer[] = []
     const userRewardsMap = new Map<string, UserReward>()
@@ -29,9 +64,29 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx) => {
     for (let block of ctx.blocks) {
         for (let log of block.logs) {
             const { from, to, amount } = events.Transfer.decode(log)
-            const reward = calculateReward(amount)
             
-            // Create transfer entity
+            // Get or create user reward
+            let userReward = userRewardsMap.get(to)
+            if (!userReward) {
+                userReward = new UserReward({
+                    id: to,
+                    user: to,
+                    totalReward: 0n,
+                    lastUpdateBlock: block.header.height,
+                    lastUpdateTimestamp: BigInt(block.header.timestamp),
+                    transactionCount: 0,
+                    currentTier: TIERS.BRONZE.name
+                })
+            }
+            
+            // Update transaction count and tier
+            userReward.transactionCount += 1
+            const tier = calculateTier(userReward.transactionCount)
+            userReward.currentTier = tier.name
+            
+            // Calculate reward with tier multiplier
+            const reward = calculateReward(amount, tier)
+            
             const transfer = new Transfer({
                 id: log.id,
                 block: block.header.height,
@@ -44,12 +99,11 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx) => {
             transfers.push(transfer)
             
             // Update user rewards
-            const userReward = updateUserReward(
-                userRewardsMap, 
-                to, 
-                reward, 
-                block.header
-            )
+            userReward.totalReward += reward
+            userReward.lastUpdateBlock = block.header.height
+            userReward.lastUpdateTimestamp = BigInt(block.header.timestamp)
+            
+            userRewardsMap.set(to, userReward)
             
             // Create reward history entry
             const rewardHistory = new RewardHistory({
@@ -58,44 +112,15 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx) => {
                 amount: reward,
                 block: block.header.height,
                 timestamp: BigInt(block.header.timestamp),
-                transfer
+                transfer,
+                tierAtTime: tier.name,
+                multiplier: tier.multiplier
             })
             rewardHistories.push(rewardHistory)
         }
     }
 
-    // Save everything
     await ctx.store.save([...userRewardsMap.values()])
     await ctx.store.insert(transfers)
     await ctx.store.insert(rewardHistories)
 })
-
-function calculateReward(amount: bigint): bigint {
-    return amount * 5n / 100n // 5% reward
-}
-
-function updateUserReward(
-    rewardsMap: Map<string, UserReward>, 
-    user: string, 
-    newReward: bigint,
-    block: {height: number, timestamp: number}
-): UserReward {
-    let userReward = rewardsMap.get(user)
-    
-    if (!userReward) {
-        userReward = new UserReward({
-            id: user,
-            user: user,
-            totalReward: 0n,
-            lastUpdateBlock: block.height,
-            lastUpdateTimestamp: BigInt(block.timestamp)
-        })
-    }
-    
-    userReward.totalReward += newReward
-    userReward.lastUpdateBlock = block.height
-    userReward.lastUpdateTimestamp = BigInt(block.timestamp)
-    
-    rewardsMap.set(user, userReward)
-    return userReward
-}

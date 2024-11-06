@@ -1,4 +1,4 @@
-import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, ManyToOne as ManyToOne_, Index as Index_, BigIntColumn as BigIntColumn_, IntColumn as IntColumn_} from "@subsquid/typeorm-store"
+import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, ManyToOne as ManyToOne_, Index as Index_, BigIntColumn as BigIntColumn_, IntColumn as IntColumn_, StringColumn as StringColumn_, FloatColumn as FloatColumn_} from "@subsquid/typeorm-store"
 import {UserReward} from "./userReward.model"
 import {Transfer} from "./transfer.model"
 
@@ -27,4 +27,10 @@ export class RewardHistory {
     @Index_()
     @ManyToOne_(() => Transfer, {nullable: true})
     transfer!: Transfer
+
+    @StringColumn_({nullable: false})
+    tierAtTime!: string
+
+    @FloatColumn_({nullable: false})
+    multiplier!: number
 }
